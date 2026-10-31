@@ -10,6 +10,7 @@ import {
 import { GameClock } from '../systems/GameClock.js';
 import { ScoreTracker } from '../systems/ScoreTracker.js';
 import { TargetSpawnManager } from '../systems/TargetSpawnManager.js';
+import { AudioService } from '../services/AudioService.js';
 
 export class GameScene extends Phaser.Scene {
   private clock!: GameClock;
@@ -262,6 +263,9 @@ export class GameScene extends Phaser.Scene {
     this.frenzyTriggered = true;
     this.updateMoonColor(true);
 
+    // Play resonant Korean temple bell gong
+    AudioService.getInstance().playFrenzyGong();
+
     // Flash frenzy banner
     this.tweens.add({
       targets: this.frenzyBanner,
@@ -293,6 +297,9 @@ export class GameScene extends Phaser.Scene {
     y: number
   ): void {
     const result = this.scoreTracker.registerHit(type, points);
+
+    // Play sound effect matching the caught spirit
+    AudioService.getInstance().playCatch(type);
 
     // Update score text
     this.scoreText.setText(`${result.newScore}`);
@@ -364,6 +371,7 @@ export class GameScene extends Phaser.Scene {
       this.comboContainer.setAlpha(1);
 
       if (isComboBonus) {
+        AudioService.getInstance().playComboBonus();
         this.comboText.setText(`COMBO BONUS! x${streak}`);
         this.tweens.add({
           targets: this.comboContainer,
@@ -381,6 +389,9 @@ export class GameScene extends Phaser.Scene {
   private handleRoundFinish(): void {
     this.isRoundOver = true;
     this.spawnManager.clearAll();
+
+    // Play round finish sound
+    AudioService.getInstance().playTimeUp();
 
     // Persist score if new personal best
     const isNewBest = this.scoreTracker.saveScoreIfBest();

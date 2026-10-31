@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, COLOR_PALETTE, STORAGE_KEYS } from '../config/constants.js';
+import { GAME_WIDTH, GAME_HEIGHT, COLOR_PALETTE } from '../config/constants.js';
 import { getPlatformService } from '../services/platform/PlatformManager.js';
+import { AudioService } from '../services/AudioService.js';
 
 export class MenuScene extends Phaser.Scene {
   private fireflies: Phaser.GameObjects.Arc[] = [];
@@ -14,7 +15,7 @@ export class MenuScene extends Phaser.Scene {
   create(): void {
     const platform = getPlatformService();
     const bestScore = platform.getBestScore();
-    this.soundEnabled = localStorage.getItem(STORAGE_KEYS.SOUND_ENABLED) !== 'false';
+    this.soundEnabled = AudioService.getInstance().isEnabled();
 
     // 1. Deep night sky background
     const bg = this.add.graphics();
@@ -295,6 +296,7 @@ export class MenuScene extends Phaser.Scene {
 
     container.on('pointerdown', () => {
       container.setScale(0.96);
+      AudioService.getInstance().playButtonClick();
     });
 
     container.on('pointerup', () => {
@@ -306,6 +308,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createSoundToggle(x: number, y: number): void {
+    const audio = AudioService.getInstance();
     const btn = this.add.container(x, y);
     const bg = this.add.graphics();
     bg.fillStyle(0x221a3a, 0.8);
@@ -314,10 +317,11 @@ export class MenuScene extends Phaser.Scene {
     bg.strokeRoundedRect(-32, -16, 64, 32, 16);
     btn.add(bg);
 
-    this.soundBtnText = this.add.text(0, 0, this.soundEnabled ? 'SFX: ON' : 'SFX: OFF', {
+    const isEnabled = audio.isEnabled();
+    this.soundBtnText = this.add.text(0, 0, isEnabled ? 'SFX: ON' : 'SFX: OFF', {
       fontFamily: '"Outfit", sans-serif',
       fontSize: '10px',
-      color: this.soundEnabled ? '#58C9ED' : '#9F99B2',
+      color: isEnabled ? '#58C9ED' : '#9F99B2',
       fontStyle: '700',
     }).setOrigin(0.5);
     btn.add(this.soundBtnText);
@@ -326,10 +330,9 @@ export class MenuScene extends Phaser.Scene {
     btn.setInteractive({ useHandCursor: true });
 
     btn.on('pointerdown', () => {
-      this.soundEnabled = !this.soundEnabled;
-      localStorage.setItem(STORAGE_KEYS.SOUND_ENABLED, this.soundEnabled ? 'true' : 'false');
-      this.soundBtnText.setText(this.soundEnabled ? 'SFX: ON' : 'SFX: OFF');
-      this.soundBtnText.setColor(this.soundEnabled ? '#58C9ED' : '#9F99B2');
+      const nowEnabled = audio.toggle();
+      this.soundBtnText.setText(nowEnabled ? 'SFX: ON' : 'SFX: OFF');
+      this.soundBtnText.setColor(nowEnabled ? '#58C9ED' : '#9F99B2');
     });
   }
 }

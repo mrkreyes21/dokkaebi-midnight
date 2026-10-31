@@ -3,6 +3,7 @@ import { TargetInteractionEvent } from '@dokkaebi/shared';
 import { GAME_WIDTH, GAME_HEIGHT, COLOR_PALETTE } from '../config/constants.js';
 import { getPlatformService } from '../services/platform/PlatformManager.js';
 import { ShareCardService } from '../services/ShareCardService.js';
+import { AudioService } from '../services/AudioService.js';
 
 interface GameOverData {
   score: number;
@@ -103,6 +104,7 @@ export class GameOverScene extends Phaser.Scene {
     });
 
     if (this.roundData.isNewBest) {
+      AudioService.getInstance().playNewBestFanfare();
       const newBestTag = this.add.text(GAME_WIDTH / 2, cardY + 50, '★ NEW PERSONAL BEST! ★', {
         fontFamily: '"Outfit", sans-serif',
         fontSize: '14px',
@@ -360,6 +362,7 @@ export class GameOverScene extends Phaser.Scene {
 
     container.on('pointerdown', () => {
       container.setScale(0.95);
+      AudioService.getInstance().playButtonClick();
     });
 
     container.on('pointerup', () => {

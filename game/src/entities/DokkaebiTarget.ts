@@ -233,7 +233,8 @@ export class DokkaebiTarget extends Phaser.GameObjects.Container {
       this.y
     );
 
-    // Play hit pop animation
+    // Play hit pop animation & particle burst
+    this.createHitParticles();
     this.ringGraphics.clear();
     this.scene.tweens.add({
       targets: this,
@@ -247,11 +248,36 @@ export class DokkaebiTarget extends Phaser.GameObjects.Container {
     });
   }
 
+  private createHitParticles(): void {
+    const particleCount = 8;
+    const color = this.targetDef.ringColor;
+
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (Math.PI * 2 / particleCount) * i + Math.random() * 0.3;
+      const speed = Phaser.Math.Between(45, 95);
+      const targetX = this.x + Math.cos(angle) * speed;
+      const targetY = this.y + Math.sin(angle) * speed;
+
+      const p = this.scene.add.circle(this.x, this.y, Phaser.Math.Between(2, 4), color, 0.95);
+      this.scene.tweens.add({
+        targets: p,
+        x: targetX,
+        y: targetY,
+        scale: 0.2,
+        alpha: 0,
+        duration: Phaser.Math.Between(280, 420),
+        ease: 'Cubic.easeOut',
+        onComplete: () => p.destroy(),
+      });
+    }
+  }
+
   private handleExpire(): void {
     this.isExpired = true;
     this.disableInteractive();
     this.onExpireCallback(this.targetId, this.targetDef.type);
 
+    this.createExpirePuff();
     this.ringGraphics.clear();
     this.scene.tweens.add({
       targets: this,
@@ -262,6 +288,19 @@ export class DokkaebiTarget extends Phaser.GameObjects.Container {
       onComplete: () => {
         this.destroy();
       },
+    });
+  }
+
+  private createExpirePuff(): void {
+    const puff = this.scene.add.circle(this.x, this.y, this.targetDef.radius * 0.8, 0x9f99b2, 0.4);
+    this.scene.tweens.add({
+      targets: puff,
+      scale: 1.5,
+      alpha: 0,
+      y: this.y - 15,
+      duration: 250,
+      ease: 'Quad.easeOut',
+      onComplete: () => puff.destroy(),
     });
   }
 
