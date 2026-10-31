@@ -1,0 +1,19 @@
+{
+  "name": "@dokkaebi/game",
+  "version": "1.0.0",
+  "description": "Frontend game client for DOKKAEBI: The Midnight Game",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@dokkaebi/shared": "*",
+    "phaser": "~3.90.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0"
+  }
+}

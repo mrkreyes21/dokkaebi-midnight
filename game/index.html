@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>DOKKAEBI: The Midnight Game | 도깨비</title>
+    <meta name="description" content="One village. Thirty seconds. How many mischievous spirits can you catch in the midnight Korean village?" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Noto+Serif+KR:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        background-color: #0d0a18;
+        background-image: radial-gradient(circle at 50% 30%, #1d1838 0%, #0d0a18 80%);
+        overflow: hidden;
+        font-family: 'Outfit', sans-serif;
+        color: #F4EBDD;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #game-container {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+
+      canvas {
+        display: block;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+        border-radius: 4px;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+      }
+
+      /* Desktop frame styling */
+      @media (min-width: 768px) {
+        body {
+          background-image: 
+            radial-gradient(circle at 50% 20%, rgba(88, 201, 237, 0.08) 0%, transparent 60%),
+            radial-gradient(circle at 50% 30%, #1d1838 0%, #0d0a18 80%);
+        }
+        canvas {
+          border: 1px solid rgba(215, 173, 102, 0.2);
+          border-radius: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-container"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
