@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build:shared": "npm run build --prefix ../shared",
+    "build": "npm run build:shared && tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "migrate": "tsx src/database/migrate.ts",
     "test": "vitest run"
