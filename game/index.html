@@ -66,6 +66,19 @@
   </head>
   <body>
     <div id="game-container"></div>
+    <!--
+      Facebook Instant Games SDK — loaded synchronously so FBInstant is
+      available before the game module initialises.
+      In local dev the SDK is intentionally absent; PlatformManager will
+      detect window.FBInstant === undefined and activate MockPlatformService.
+    -->
+    <script>
+      // Inject API base URL from meta tag for the game bundle to pick up
+      // This is set by the hosting environment or FB game configuration.
+      // Falls back to localhost for local development.
+      window.__API_URL__ = window.__API_URL__ || 'http://localhost:3000';
+    </script>
+    <script src="https://connect.facebook.net/en_US/fbinstant.7.1.js" onerror="console.warn('[DOKKAEBI] FB Instant Games SDK not available – running in dev/mock mode.')"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

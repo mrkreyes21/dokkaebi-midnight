@@ -11,11 +11,14 @@ import { GameClock } from '../systems/GameClock.js';
 import { ScoreTracker } from '../systems/ScoreTracker.js';
 import { TargetSpawnManager } from '../systems/TargetSpawnManager.js';
 import { AudioService } from '../services/AudioService.js';
+import { ApiService } from '../services/ApiService.js';
+import { getPlatformService } from '../services/platform/PlatformManager.js';
 
 export class GameScene extends Phaser.Scene {
   private clock!: GameClock;
   private scoreTracker!: ScoreTracker;
   private spawnManager!: TargetSpawnManager;
+  private serverSessionId: string | null = null;
 
   // HUD Elements
   private timerText!: Phaser.GameObjects.Text;
@@ -38,6 +41,17 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.isRoundOver = false;
     this.frenzyTriggered = false;
+    this.serverSessionId = null;
+
+    // Asynchronously create server session
+    const platform = getPlatformService();
+    platform.getSignedPlayerInfo().then((signedInfo) => {
+      ApiService.createSession(signedInfo).then((session) => {
+        if (session) {
+          this.serverSessionId = session.sessionId;
+        }
+      });
+    });
 
     // Initialize systems
     this.clock = new GameClock(ROUND_DURATION_MS);
@@ -419,6 +433,7 @@ export class GameScene extends Phaser.Scene {
           stats: this.scoreTracker.getStats(),
           isNewBest,
           recordedEvents: this.spawnManager.getRecordedEvents(),
+          serverSessionId: this.serverSessionId,
         });
       },
     });

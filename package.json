@@ -11,10 +11,14 @@
   "scripts": {
     "build:shared": "npm --workspace=@dokkaebi/shared run build",
     "build:game": "npm --workspace=@dokkaebi/game run build",
-    "build": "npm run build:shared && npm run build:game",
+    "build:backend": "npm run build:shared && npm --workspace=@dokkaebi/backend run build",
+    "build": "npm run build:shared && npm run build:game && npm --workspace=@dokkaebi/backend run build",
     "dev:game": "npm --workspace=@dokkaebi/game run dev",
+    "dev:backend": "npm --workspace=@dokkaebi/backend run dev",
     "dev": "npm run dev:game",
-    "test": "npm --workspace=@dokkaebi/shared test --if-present"
+    "start:backend": "npm --workspace=@dokkaebi/backend start",
+    "migrate": "npm --workspace=@dokkaebi/backend run migrate",
+    "test": "npm --workspace=@dokkaebi/backend test --if-present"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

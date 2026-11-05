@@ -4,6 +4,7 @@ import { GAME_WIDTH, GAME_HEIGHT, COLOR_PALETTE } from '../config/constants.js';
 import { getPlatformService } from '../services/platform/PlatformManager.js';
 import { ShareCardService } from '../services/ShareCardService.js';
 import { AudioService } from '../services/AudioService.js';
+import { ApiService } from '../services/ApiService.js';
 
 interface GameOverData {
   score: number;
@@ -18,11 +19,13 @@ interface GameOverData {
   };
   isNewBest: boolean;
   recordedEvents: TargetInteractionEvent[];
+  serverSessionId?: string | null;
 }
 
 export class GameOverScene extends Phaser.Scene {
   private roundData!: GameOverData;
   private shareStatusText!: Phaser.GameObjects.Text;
+  private leaderboardContainer!: Phaser.GameObjects.Container;
 
   constructor() {
     super({ key: 'GameOverScene' });
@@ -103,9 +106,36 @@ export class GameOverScene extends Phaser.Scene {
       ease: 'Back.easeOut',
     });
 
+    const serverStatusText = this.add.text(GAME_WIDTH / 2, cardY + 30, '', {
+      fontFamily: '"Outfit", sans-serif',
+      fontSize: '11px',
+      color: '#8BE4FF',
+      fontStyle: '600',
+    }).setOrigin(0.5);
+
+    if (this.roundData.serverSessionId) {
+      serverStatusText.setText('Validating with Server...');
+      platform.getSignedPlayerInfo().then((signedInfo) => {
+        ApiService.finishSession(
+          this.roundData.serverSessionId!,
+          this.roundData.recordedEvents,
+          this.roundData.score,
+          signedInfo
+        ).then((res) => {
+          if (res?.accepted) {
+            serverStatusText.setText('✓ Verified by Server Authority');
+            serverStatusText.setColor('#3BE0B8');
+          } else if (res?.validationError) {
+            serverStatusText.setText(`⚠ ${res.validationError}`);
+            serverStatusText.setColor('#FF6B8B');
+          }
+        });
+      });
+    }
+
     if (this.roundData.isNewBest) {
       AudioService.getInstance().playNewBestFanfare();
-      const newBestTag = this.add.text(GAME_WIDTH / 2, cardY + 50, '★ NEW PERSONAL BEST! ★', {
+      const newBestTag = this.add.text(GAME_WIDTH / 2, cardY + 52, '★ NEW PERSONAL BEST! ★', {
         fontFamily: '"Outfit", sans-serif',
         fontSize: '14px',
         color: '#FFD700',
@@ -121,7 +151,7 @@ export class GameOverScene extends Phaser.Scene {
         repeat: -1,
       });
     } else {
-      this.add.text(GAME_WIDTH / 2, cardY + 48, `Personal Best: ${bestScore} pts`, {
+      this.add.text(GAME_WIDTH / 2, cardY + 50, `Personal Best: ${bestScore} pts`, {
         fontFamily: '"Outfit", sans-serif',
         fontSize: '13px',
         color: '#D7AD66',
@@ -135,8 +165,10 @@ export class GameOverScene extends Phaser.Scene {
     this.createStatBadge(270, statsY, 'Cursed Traps', `${this.roundData.stats.hazardHits}`);
     this.createStatBadge(440, statsY, 'Max Streak', `${this.roundData.stats.maxCombo}`);
 
-    // 5. Leaderboard Section (Top 10)
-    this.createLeaderboardSection(345, player.name, this.roundData.score, bestScore);
+    // 5. Leaderboard Section (Top 10) — fetched from backend
+    this.leaderboardContainer = this.add.container(0, 0);
+    this.renderLeaderboardLoading(345);
+    this.fetchAndRenderLeaderboard(345, player.name, this.roundData.score, bestScore);
 
     // 6. Action Buttons at Bottom
     const btnY = 875;
@@ -205,12 +237,8 @@ export class GameOverScene extends Phaser.Scene {
     container.add(lblText);
   }
 
-  private createLeaderboardSection(
-    topY: number,
-    playerName: string,
-    currentScore: number,
-    bestScore: number
-  ): void {
+  private renderLeaderboardLoading(topY: number): void {
+    this.leaderboardContainer.removeAll(true);
     const boardWidth = GAME_WIDTH - 70;
     const boardHeight = 440;
     const boardX = 35;
@@ -220,42 +248,97 @@ export class GameOverScene extends Phaser.Scene {
     bg.fillRoundedRect(boardX, topY, boardWidth, boardHeight, 14);
     bg.lineStyle(1.5, 0xd7ad66, 0.3);
     bg.strokeRoundedRect(boardX, topY, boardWidth, boardHeight, 14);
+    this.leaderboardContainer.add(bg);
 
-    this.add.text(GAME_WIDTH / 2, topY + 24, 'TOP 10 SPIRIT HUNTERS', {
+    const title = this.add.text(GAME_WIDTH / 2, topY + 24, 'TOP 10 SPIRIT HUNTERS', {
       fontFamily: '"Outfit", sans-serif',
       fontSize: '14px',
       color: '#D7AD66',
       fontStyle: '800',
       letterSpacing: 2,
     }).setOrigin(0.5);
+    this.leaderboardContainer.add(title);
 
-    // Initial mock leaderboard entries (Phase 1 local preview; replaced by backend in Phase 3)
-    const mockScores = [
-      { rank: 1, name: 'MoonWalker', score: 68 },
-      { rank: 2, name: 'DokkaebiMaster', score: 54 },
-      { rank: 3, name: 'HanokGhost', score: 47 },
-      { rank: 4, name: 'NightSeeker', score: 39 },
-      { rank: 5, name: playerName, score: Math.max(currentScore, bestScore), isCurrent: true },
-      { rank: 6, name: 'FireflyFox', score: 28 },
-      { rank: 7, name: 'ShadowTapper', score: 24 },
-      { rank: 8, name: 'LotusSpirit', score: 19 },
-      { rank: 9, name: 'CobaltSprite', score: 15 },
-      { rank: 10, name: 'VillageWanderer', score: 11 },
-    ];
+    const loading = this.add.text(GAME_WIDTH / 2, topY + boardHeight / 2, 'Loading rankings...', {
+      fontFamily: '"Outfit", sans-serif',
+      fontSize: '13px',
+      color: '#9F99B2',
+      fontStyle: '600',
+    }).setOrigin(0.5);
+    this.leaderboardContainer.add(loading);
 
-    // Sort mock data dynamically so current score reflects properly
-    mockScores.sort((a, b) => b.score - a.score);
-    mockScores.forEach((item, idx) => {
-      item.rank = idx + 1;
+    this.tweens.add({
+      targets: loading,
+      alpha: 0.3,
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
     });
+  }
+
+  private async fetchAndRenderLeaderboard(
+    topY: number,
+    playerName: string,
+    currentScore: number,
+    bestScore: number
+  ): Promise<void> {
+    try {
+      const platform = getPlatformService();
+      const signedInfo = await platform.getSignedPlayerInfo().catch(() => null);
+      const data = await ApiService.getLeaderboard(signedInfo);
+
+      if (!this.scene.isActive('GameOverScene')) return; // Scene may have been left
+
+      if (data && data.topScores.length > 0) {
+        this.renderLeaderboardData(topY, data.topScores, data.playerEntry ?? null, playerName, currentScore, bestScore);
+      } else {
+        // Backend unreachable — show offline indicator with local best
+        this.renderLeaderboardOffline(topY, playerName, currentScore, bestScore);
+      }
+    } catch {
+      if (this.scene.isActive('GameOverScene')) {
+        this.renderLeaderboardOffline(topY, playerName, currentScore, bestScore);
+      }
+    }
+  }
+
+  private renderLeaderboardData(
+    topY: number,
+    topScores: Array<{ rank: number; playerId: string; displayName: string; score: number; achievedAt: string }>,
+    playerEntry: { rank: number; playerId: string; displayName: string; score: number } | null,
+    _playerName: string,
+    _currentScore: number,
+    _bestScore: number
+  ): void {
+    this.leaderboardContainer.removeAll(true);
+    const boardWidth = GAME_WIDTH - 70;
+    const boardHeight = 440;
+    const boardX = 35;
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x130e24, 0.92);
+    bg.fillRoundedRect(boardX, topY, boardWidth, boardHeight, 14);
+    bg.lineStyle(1.5, 0xd7ad66, 0.3);
+    bg.strokeRoundedRect(boardX, topY, boardWidth, boardHeight, 14);
+    this.leaderboardContainer.add(bg);
+
+    const title = this.add.text(GAME_WIDTH / 2, topY + 24, 'TOP 10 SPIRIT HUNTERS', {
+      fontFamily: '"Outfit", sans-serif',
+      fontSize: '14px',
+      color: '#D7AD66',
+      fontStyle: '800',
+      letterSpacing: 2,
+    }).setOrigin(0.5);
+    this.leaderboardContainer.add(title);
 
     const rowStartY = topY + 56;
     const rowHeight = 36;
+    const currentPlayerId = playerEntry?.playerId;
 
-    for (let i = 0; i < Math.min(10, mockScores.length); i++) {
-      const entry = mockScores[i];
+    for (let i = 0; i < Math.min(10, topScores.length); i++) {
+      const entry = topScores[i];
       const rowY = rowStartY + i * rowHeight;
-      const isPlayer = entry.isCurrent;
+      const isPlayer = entry.playerId === currentPlayerId;
 
       const rowBg = this.add.graphics();
       if (isPlayer) {
@@ -267,36 +350,151 @@ export class GameOverScene extends Phaser.Scene {
         rowBg.fillStyle(0x18132c, 0.5);
         rowBg.fillRoundedRect(boardX + 8, rowY - 4, boardWidth - 16, rowHeight - 4, 6);
       }
+      this.leaderboardContainer.add(rowBg);
 
-      // Rank icon or text
       let rankColor = '#9F99B2';
       if (entry.rank === 1) rankColor = '#FFD700';
       if (entry.rank === 2) rankColor = '#E0E0E0';
       if (entry.rank === 3) rankColor = '#CD7F32';
 
-      this.add.text(boardX + 22, rowY + 12, `#${entry.rank}`, {
+      const rankTxt = this.add.text(boardX + 22, rowY + 12, `#${entry.rank}`, {
         fontFamily: '"Outfit", sans-serif',
         fontSize: '13px',
         color: rankColor,
         fontStyle: '800',
       }).setOrigin(0, 0.5);
+      this.leaderboardContainer.add(rankTxt);
 
-      // Name
-      this.add.text(boardX + 68, rowY + 12, entry.name, {
+      const nameTxt = this.add.text(boardX + 68, rowY + 12, entry.displayName, {
         fontFamily: '"Outfit", sans-serif',
         fontSize: '13px',
         color: isPlayer ? '#FFE29A' : '#F4EBDD',
         fontStyle: isPlayer ? '800' : '500',
       }).setOrigin(0, 0.5);
+      this.leaderboardContainer.add(nameTxt);
 
-      // Score
-      this.add.text(boardX + boardWidth - 24, rowY + 12, `${entry.score} pts`, {
+      const scoreTxt = this.add.text(boardX + boardWidth - 24, rowY + 12, `${entry.score} pts`, {
         fontFamily: '"Outfit", sans-serif',
         fontSize: '13px',
         color: '#58C9ED',
         fontStyle: '700',
       }).setOrigin(1, 0.5);
+      this.leaderboardContainer.add(scoreTxt);
     }
+
+    // If player is not in top 10, show their rank below
+    if (playerEntry && !topScores.find((e) => e.playerId === currentPlayerId)) {
+      const sep = this.add.text(GAME_WIDTH / 2, rowStartY + 10 * rowHeight + 4, '— — —', {
+        fontFamily: '"Outfit", sans-serif',
+        fontSize: '11px',
+        color: '#4a4060',
+      }).setOrigin(0.5);
+      this.leaderboardContainer.add(sep);
+
+      const yourRankY = rowStartY + 10 * rowHeight + 22;
+      const yourBg = this.add.graphics();
+      yourBg.fillStyle(0x2d214f, 0.95);
+      yourBg.fillRoundedRect(boardX + 8, yourRankY - 4, boardWidth - 16, rowHeight - 4, 6);
+      yourBg.lineStyle(1, COLOR_PALETTE.warmGold, 0.7);
+      yourBg.strokeRoundedRect(boardX + 8, yourRankY - 4, boardWidth - 16, rowHeight - 4, 6);
+      this.leaderboardContainer.add(yourBg);
+
+      const yourRank = this.add.text(boardX + 22, yourRankY + 12, `#${playerEntry.rank}`, {
+        fontFamily: '"Outfit", sans-serif',
+        fontSize: '13px',
+        color: '#9F99B2',
+        fontStyle: '800',
+      }).setOrigin(0, 0.5);
+      this.leaderboardContainer.add(yourRank);
+
+      const yourName = this.add.text(boardX + 68, yourRankY + 12, `${playerEntry.displayName} (you)`, {
+        fontFamily: '"Outfit", sans-serif',
+        fontSize: '13px',
+        color: '#FFE29A',
+        fontStyle: '800',
+      }).setOrigin(0, 0.5);
+      this.leaderboardContainer.add(yourName);
+
+      const yourScore = this.add.text(boardX + boardWidth - 24, yourRankY + 12, `${playerEntry.score} pts`, {
+        fontFamily: '"Outfit", sans-serif',
+        fontSize: '13px',
+        color: '#58C9ED',
+        fontStyle: '700',
+      }).setOrigin(1, 0.5);
+      this.leaderboardContainer.add(yourScore);
+    }
+  }
+
+  private renderLeaderboardOffline(
+    topY: number,
+    playerName: string,
+    currentScore: number,
+    bestScore: number
+  ): void {
+    this.leaderboardContainer.removeAll(true);
+    const boardWidth = GAME_WIDTH - 70;
+    const boardHeight = 440;
+    const boardX = 35;
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x130e24, 0.92);
+    bg.fillRoundedRect(boardX, topY, boardWidth, boardHeight, 14);
+    bg.lineStyle(1.5, 0xd7ad66, 0.3);
+    bg.strokeRoundedRect(boardX, topY, boardWidth, boardHeight, 14);
+    this.leaderboardContainer.add(bg);
+
+    const title = this.add.text(GAME_WIDTH / 2, topY + 24, 'TOP 10 SPIRIT HUNTERS', {
+      fontFamily: '"Outfit", sans-serif',
+      fontSize: '14px',
+      color: '#D7AD66',
+      fontStyle: '800',
+      letterSpacing: 2,
+    }).setOrigin(0.5);
+    this.leaderboardContainer.add(title);
+
+    const offlineNote = this.add.text(GAME_WIDTH / 2, topY + 55, 'Server unavailable — scores not synced', {
+      fontFamily: '"Outfit", sans-serif',
+      fontSize: '11px',
+      color: '#6a6485',
+      fontStyle: '600',
+    }).setOrigin(0.5);
+    this.leaderboardContainer.add(offlineNote);
+
+    // Show local best as the only entry
+    const rowY = topY + 85;
+    const isNewBest = currentScore >= bestScore;
+    const displayScore = Math.max(currentScore, bestScore);
+
+    const rowBg = this.add.graphics();
+    rowBg.fillStyle(0x2d214f, 0.95);
+    rowBg.fillRoundedRect(boardX + 8, rowY - 4, boardWidth - 16, 32, 6);
+    rowBg.lineStyle(1, COLOR_PALETTE.warmGold, 0.7);
+    rowBg.strokeRoundedRect(boardX + 8, rowY - 4, boardWidth - 16, 32, 6);
+    this.leaderboardContainer.add(rowBg);
+
+    const youTxt = this.add.text(boardX + 22, rowY + 12, `YOU`, {
+      fontFamily: '"Outfit", sans-serif',
+      fontSize: '13px',
+      color: '#FFD700',
+      fontStyle: '800',
+    }).setOrigin(0, 0.5);
+    this.leaderboardContainer.add(youTxt);
+
+    const nameTxt = this.add.text(boardX + 68, rowY + 12, playerName, {
+      fontFamily: '"Outfit", sans-serif',
+      fontSize: '13px',
+      color: '#FFE29A',
+      fontStyle: '800',
+    }).setOrigin(0, 0.5);
+    this.leaderboardContainer.add(nameTxt);
+
+    const scoreTxt = this.add.text(boardX + boardWidth - 24, rowY + 12, `${displayScore} pts${isNewBest ? ' ★' : ''}`, {
+      fontFamily: '"Outfit", sans-serif',
+      fontSize: '13px',
+      color: '#58C9ED',
+      fontStyle: '700',
+    }).setOrigin(1, 0.5);
+    this.leaderboardContainer.add(scoreTxt);
   }
 
   private async handleShare(playerName: string, bestScore: number): Promise<void> {
