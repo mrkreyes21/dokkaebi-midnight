@@ -1,8 +1,12 @@
 import Phaser from 'phaser';
-import { TargetType, TargetInteractionEvent } from '@dokkaebi/shared';
+import {
+  TargetType,
+  TargetInteractionEvent,
+  ScheduledTarget,
+  generateTargetSchedule,
+} from '@dokkaebi/shared';
 import {
   SAFE_PLAY_BOUNDS,
-  MIN_TARGET_SPACING,
   TARGET_DEFINITIONS,
 } from '../config/constants.js';
 import { DokkaebiTarget } from '../entities/DokkaebiTarget.js';
@@ -19,9 +23,9 @@ export class TargetSpawnManager {
   private callbacks: SpawnManagerCallbacks;
 
   private activeTargets: Map<string, DokkaebiTarget> = new Map();
-  private targetCounter: number = 0;
-  private timeSinceLastSpawnMs: number = 0;
-  private nextSpawnIntervalMs: number = 850;
+  private schedule: ScheduledTarget[] = [];
+  private nextScheduleIndex: number = 0;
+  private ready: boolean = false;
 
   // Interaction events logged for server score validation
   private recordedEvents: TargetInteractionEvent[] = [];
@@ -32,125 +36,82 @@ export class TargetSpawnManager {
     this.callbacks = callbacks;
   }
 
-  public update(deltaMs: number): void {
-    if (this.clock.isFinished()) return;
-
-    // Update lifetimes of all active targets
-    for (const [id, target] of this.activeTargets.entries()) {
-      target.updateLifetime(deltaMs);
-    }
-
-    // Determine current difficulty tier based on elapsed time
-    const elapsedMs = this.clock.getElapsedMs();
-    const elapsedSec = elapsedMs / 1000;
-
-    let maxSimultaneous = 3;
-    let baseInterval = 850;
-
-    if (elapsedSec >= 20) {
-      // Midnight Frenzy: 20–30s
-      maxSimultaneous = 5;
-      baseInterval = 450;
-    } else if (elapsedSec >= 10) {
-      // The Hunt: 10–20s
-      maxSimultaneous = 4;
-      baseInterval = 650;
-    }
-
-    this.timeSinceLastSpawnMs += deltaMs;
-
-    if (
-      this.timeSinceLastSpawnMs >= this.nextSpawnIntervalMs &&
-      this.activeTargets.size < maxSimultaneous
-    ) {
-      this.spawnRandomTarget(elapsedSec);
-      this.timeSinceLastSpawnMs = 0;
-      // Slight jitter on spawn interval (±10%) for organic reflex pacing
-      this.nextSpawnIntervalMs = baseInterval * (0.9 + Math.random() * 0.2);
-    }
+  /** Load deterministic schedule from server session seed (required for verified scores). */
+  public loadSchedule(seed: string): void {
+    this.schedule = generateTargetSchedule(seed);
+    this.nextScheduleIndex = 0;
+    this.ready = true;
   }
 
-  private spawnRandomTarget(elapsedSec: number): void {
-    // Filter available targets based on current game time
-    const availableTypes: TargetType[] = [];
-    const weights: number[] = [];
+  /** Offline / no-backend fallback: empty schedule means nothing spawns until seed arrives. */
+  public isReady(): boolean {
+    return this.ready;
+  }
 
-    for (const type of Object.values(TargetType)) {
-      const def = TARGET_DEFINITIONS[type];
-      if (elapsedSec >= def.minDifficultySec) {
-        availableTypes.push(type);
-        weights.push(def.weight);
+  /**
+   * Manual hit test — pick the closest living target under the pointer.
+   */
+  public handlePointerDown(worldX: number, worldY: number): boolean {
+    let best: DokkaebiTarget | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+
+    for (const target of this.activeTargets.values()) {
+      if (!target.containsPoint(worldX, worldY)) continue;
+      const dist = Phaser.Math.Distance.Between(worldX, worldY, target.x, target.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = target;
       }
     }
 
-    const selectedType = this.chooseWeightedType(availableTypes, weights);
-    const def = TARGET_DEFINITIONS[selectedType];
+    if (!best) return false;
+    return best.registerHit();
+  }
 
-    // Find safe spawn coordinates
-    const pos = this.findSafeSpawnPosition();
-    if (!pos) {
-      // No safe position found without colliding; skip this spawn tick
-      return;
+  public update(_deltaMs: number): void {
+    if (this.clock.isFinished() || !this.ready) return;
+
+    // Update lifetimes of all active targets
+    for (const target of this.activeTargets.values()) {
+      target.updateLifetime(_deltaMs);
     }
 
-    this.targetCounter++;
-    const targetId = `dokkaebi_${this.targetCounter}_${Date.now().toString(36)}`;
+    const elapsedMs = this.clock.getElapsedMs();
+
+    // Spawn every scheduled target whose spawn time has arrived
+    while (
+      this.nextScheduleIndex < this.schedule.length &&
+      this.schedule[this.nextScheduleIndex].spawnMs <= elapsedMs
+    ) {
+      this.spawnScheduledTarget(this.schedule[this.nextScheduleIndex]);
+      this.nextScheduleIndex++;
+    }
+  }
+
+  private spawnScheduledTarget(scheduled: ScheduledTarget): void {
+    const def = TARGET_DEFINITIONS[scheduled.type];
+    if (!def) return;
+
+    const { minX, maxX, minY, maxY } = SAFE_PLAY_BOUNDS;
+    const x = minX + scheduled.xRatio * (maxX - minX);
+    const y = minY + scheduled.yRatio * (maxY - minY);
 
     const target = new DokkaebiTarget(
       this.scene,
-      targetId,
-      pos.x,
-      pos.y,
+      scheduled.id,
+      x,
+      y,
       def,
-      (id, type, points, x, y) => this.handleHit(id, type, points, x, y),
+      (id, type, points, px, py) => this.handleHit(id, type, points, px, py),
       (id, type) => this.handleExpire(id, type)
     );
 
-    this.activeTargets.set(targetId, target);
-  }
-
-  private chooseWeightedType(types: TargetType[], weights: number[]): TargetType {
-    const totalWeight = weights.reduce((acc, w) => acc + w, 0);
-    let rand = Math.random() * totalWeight;
-
-    for (let i = 0; i < types.length; i++) {
-      if (rand < weights[i]) {
-        return types[i];
-      }
-      rand -= weights[i];
-    }
-    return types[0];
-  }
-
-  private findSafeSpawnPosition(): { x: number; y: number } | null {
-    const { minX, maxX, minY, maxY } = SAFE_PLAY_BOUNDS;
-    const maxAttempts = 15;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const candidateX = Phaser.Math.Between(minX, maxX);
-      const candidateY = Phaser.Math.Between(minY, maxY);
-
-      let isSafe = true;
-      for (const target of this.activeTargets.values()) {
-        const dist = Phaser.Math.Distance.Between(candidateX, candidateY, target.x, target.y);
-        if (dist < MIN_TARGET_SPACING) {
-          isSafe = false;
-          break;
-        }
-      }
-
-      if (isSafe) {
-        return { x: candidateX, y: candidateY };
-      }
-    }
-
-    return null;
+    this.activeTargets.set(scheduled.id, target);
   }
 
   private handleHit(targetId: string, type: TargetType, points: number, x: number, y: number): void {
     this.activeTargets.delete(targetId);
 
-    // Record interaction event for backend score validation
     this.recordedEvents.push({
       targetId,
       action: 'tap',
@@ -173,13 +134,19 @@ export class TargetSpawnManager {
     return this.activeTargets.size;
   }
 
-  public clearAll(): void {
+  /** Destroy live targets but keep recorded events for score submission. */
+  public clearActiveTargets(): void {
     for (const target of this.activeTargets.values()) {
       target.destroy();
     }
     this.activeTargets.clear();
+  }
+
+  public clearAll(): void {
+    this.clearActiveTargets();
     this.recordedEvents = [];
-    this.targetCounter = 0;
-    this.timeSinceLastSpawnMs = 0;
+    this.schedule = [];
+    this.nextScheduleIndex = 0;
+    this.ready = false;
   }
 }

@@ -123,14 +123,23 @@ export class GameOverScene extends Phaser.Scene {
           signedInfo
         ).then((res) => {
           if (res?.accepted) {
-            serverStatusText.setText('✓ Verified by Server Authority');
+            serverStatusText.setText(`✓ Verified · Server score ${res.score}`);
             serverStatusText.setColor('#3BE0B8');
+            scoreDisplay.setText(`${res.score}`);
+            // Refresh leaderboard after a successful commit
+            this.fetchAndRenderLeaderboard(345, player.name, res.score, res.personalBest);
           } else if (res?.validationError) {
             serverStatusText.setText(`⚠ ${res.validationError}`);
+            serverStatusText.setColor('#FF6B8B');
+          } else if (!res) {
+            serverStatusText.setText('⚠ Server unreachable — local score only');
             serverStatusText.setColor('#FF6B8B');
           }
         });
       });
+    } else {
+      serverStatusText.setText('Offline mode — score not synced');
+      serverStatusText.setColor('#9F99B2');
     }
 
     if (this.roundData.isNewBest) {
@@ -289,10 +298,17 @@ export class GameOverScene extends Phaser.Scene {
 
       if (!this.scene.isActive('GameOverScene')) return; // Scene may have been left
 
-      if (data && data.topScores.length > 0) {
-        this.renderLeaderboardData(topY, data.topScores, data.playerEntry ?? null, playerName, currentScore, bestScore);
+      if (data) {
+        // Empty topScores is a valid response (no verified scores yet) — not an outage
+        this.renderLeaderboardData(
+          topY,
+          data.topScores,
+          data.playerEntry ?? null,
+          playerName,
+          currentScore,
+          bestScore
+        );
       } else {
-        // Backend unreachable — show offline indicator with local best
         this.renderLeaderboardOffline(topY, playerName, currentScore, bestScore);
       }
     } catch {
@@ -334,6 +350,21 @@ export class GameOverScene extends Phaser.Scene {
     const rowStartY = topY + 56;
     const rowHeight = 36;
     const currentPlayerId = playerEntry?.playerId;
+
+    if (topScores.length === 0) {
+      const empty = this.add.text(
+        GAME_WIDTH / 2,
+        topY + 120,
+        'No verified scores yet — be the first!',
+        {
+          fontFamily: '"Outfit", sans-serif',
+          fontSize: '13px',
+          color: '#9F99B2',
+          fontStyle: '600',
+        }
+      ).setOrigin(0.5);
+      this.leaderboardContainer.add(empty);
+    }
 
     for (let i = 0; i < Math.min(10, topScores.length); i++) {
       const entry = topScores[i];

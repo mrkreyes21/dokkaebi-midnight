@@ -94,8 +94,8 @@ export class IdentityService {
       }
     }
 
-    // 2. Development-Only Adapter
-    if (!fbPlayerId && ENV.NODE_ENV === 'development') {
+    // 2. Development / staging adapter (local browser + Render without FB signature)
+    if (!fbPlayerId && (ENV.NODE_ENV !== 'production' || process.env.ALLOW_DEV_AUTH === 'true')) {
       fbPlayerId = params.devPlayerId || 'mock-dev-player';
       displayName = params.devPlayerName || 'Night Hunter (Dev)';
     }

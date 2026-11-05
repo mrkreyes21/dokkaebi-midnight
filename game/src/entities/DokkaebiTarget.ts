@@ -50,19 +50,12 @@ export class DokkaebiTarget extends Phaser.GameObjects.Container {
 
     this.drawBody();
 
-    // Set generous hit area matching radius + touch padding
-    const hitPadding = 16;
-    const hitRadius = targetDef.radius + hitPadding;
-    this.setSize(hitRadius * 2, hitRadius * 2);
-    this.setInteractive(
-      new Phaser.Geom.Circle(0, 0, hitRadius),
-      Phaser.Geom.Circle.Contains
-    );
+    // Hit testing is handled by TargetSpawnManager via pointer world coords
+    // (Container setInteractive is unreliable with Scale.FIT + overlapping targets).
+    const hitPadding = 28;
+    this.setSize((targetDef.radius + hitPadding) * 2, (targetDef.radius + hitPadding) * 2);
 
-    // Input listener
-    this.on('pointerdown', this.handlePointerDown, this);
-
-    // Entrance pop tween
+    // Entrance pop tween — keep full hit radius even while visually scaling in
     this.setScale(0);
     this.setAlpha(0);
     scene.tweens.add({
@@ -74,6 +67,26 @@ export class DokkaebiTarget extends Phaser.GameObjects.Container {
     });
 
     scene.add.existing(this);
+    // Keep targets above HUD/background for clarity
+    this.setDepth(100);
+  }
+
+  /** World-space hit radius used for manual pointer picking. */
+  public getHitRadius(): number {
+    return this.targetDef.radius + 28;
+  }
+
+  public containsPoint(worldX: number, worldY: number): boolean {
+    if (this.isHit || this.isExpired) return false;
+    const dist = Phaser.Math.Distance.Between(worldX, worldY, this.x, this.y);
+    return dist <= this.getHitRadius();
+  }
+
+  /** Apply a successful tap from scene-level input. Returns false if already resolved. */
+  public registerHit(): boolean {
+    if (this.isHit || this.isExpired) return false;
+    this.handlePointerDown();
+    return true;
   }
 
   private drawBody(): void {
@@ -219,10 +232,9 @@ export class DokkaebiTarget extends Phaser.GameObjects.Container {
     g.strokePath();
   }
 
-  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+  private handlePointerDown(): void {
     if (this.isHit || this.isExpired) return;
     this.isHit = true;
-    this.disableInteractive();
 
     // Trigger callback
     this.onHitCallback(
@@ -274,7 +286,6 @@ export class DokkaebiTarget extends Phaser.GameObjects.Container {
 
   private handleExpire(): void {
     this.isExpired = true;
-    this.disableInteractive();
     this.onExpireCallback(this.targetId, this.targetDef.type);
 
     this.createExpirePuff();
@@ -305,7 +316,6 @@ export class DokkaebiTarget extends Phaser.GameObjects.Container {
   }
 
   public destroy(fromScene?: boolean): void {
-    this.off('pointerdown', this.handlePointerDown, this);
     super.destroy(fromScene);
   }
 }

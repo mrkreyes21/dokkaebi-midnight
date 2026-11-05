@@ -43,16 +43,6 @@ export class GameScene extends Phaser.Scene {
     this.frenzyTriggered = false;
     this.serverSessionId = null;
 
-    // Asynchronously create server session
-    const platform = getPlatformService();
-    platform.getSignedPlayerInfo().then((signedInfo) => {
-      ApiService.createSession(signedInfo).then((session) => {
-        if (session) {
-          this.serverSessionId = session.sessionId;
-        }
-      });
-    });
-
     // Initialize systems
     this.clock = new GameClock(ROUND_DURATION_MS);
     this.scoreTracker = new ScoreTracker();
@@ -70,14 +60,41 @@ export class GameScene extends Phaser.Scene {
     // 3. Create HUD (Timer, Score, Combo streak)
     this.createHUD();
 
-    // 4. Handle visibility change / backgrounding
+    // 4. Scene-level tap/click picking (reliable with Scale.FIT + overlapping targets)
+    this.input.on('pointerdown', this.handlePointerDown, this);
+
+    // 5. Handle visibility change / backgrounding
     this.setupLifecycleHandlers();
 
-    // 5. Start clock
-    this.clock.start();
+    // 6. Create server session + load deterministic schedule BEFORE the clock starts
+    void this.startRoundWithSession();
+  }
 
-    // 6. Ready... GO! brief banner
+  private async startRoundWithSession(): Promise<void> {
+    const platform = getPlatformService();
+    const signedInfo = await platform.getSignedPlayerInfo().catch(() => null);
+    const session = await ApiService.createSession(signedInfo);
+
+    if (this.isRoundOver) return;
+
+    if (session?.seed) {
+      this.serverSessionId = session.sessionId;
+      this.spawnManager.loadSchedule(session.seed);
+    } else {
+      // Offline: still playable, but scores won't verify/sync
+      const offlineSeed = `offline_${Date.now().toString(36)}`;
+      this.spawnManager.loadSchedule(offlineSeed);
+      this.serverSessionId = null;
+    }
+
+    this.clock.start();
     this.showRoundStartBanner();
+  }
+
+  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.isRoundOver) return;
+    // worldX/Y respect Scale.FIT letterboxing so taps map to game coords
+    this.spawnManager.handlePointerDown(pointer.worldX, pointer.worldY);
   }
 
   private createBackground(): void {
@@ -402,7 +419,10 @@ export class GameScene extends Phaser.Scene {
 
   private handleRoundFinish(): void {
     this.isRoundOver = true;
-    this.spawnManager.clearAll();
+
+    // Capture taps BEFORE clearing — clearAll used to wipe recordedEvents (scores always synced as 0)
+    const recordedEvents = this.spawnManager.getRecordedEvents();
+    this.spawnManager.clearActiveTargets();
 
     // Play round finish sound
     AudioService.getInstance().playTimeUp();
@@ -432,7 +452,7 @@ export class GameScene extends Phaser.Scene {
           score: this.scoreTracker.getScore(),
           stats: this.scoreTracker.getStats(),
           isNewBest,
-          recordedEvents: this.spawnManager.getRecordedEvents(),
+          recordedEvents,
           serverSessionId: this.serverSessionId,
         });
       },
@@ -452,6 +472,7 @@ export class GameScene extends Phaser.Scene {
 
     this.events.once('shutdown', () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      this.input.off('pointerdown', this.handlePointerDown, this);
       this.spawnManager.clearAll();
       this.clock.reset();
     });
