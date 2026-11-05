@@ -6,7 +6,10 @@ import {
 } from '@dokkaebi/shared';
 
 export class ApiService {
-  private static baseUrl = (typeof window !== 'undefined' && (window as unknown as { __API_URL__?: string }).__API_URL__) || 'http://localhost:3000';
+  private static baseUrl = (
+    import.meta.env.VITE_API_URL ||
+    'http://localhost:3000'
+  ).replace(/\/$/, '');
 
   private static getHeaders(signedPlayerInfo?: string | null): Record<string, string> {
     const headers: Record<string, string> = {
