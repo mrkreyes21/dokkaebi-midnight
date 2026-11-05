@@ -80,7 +80,10 @@ export class PreloadScene extends Phaser.Scene {
   async create(): Promise<void> {
     const platform = getPlatformService();
     try {
-      await platform.startGame();
+      await Promise.race([
+        platform.startGame(),
+        new Promise<void>((resolve) => setTimeout(resolve, 2500)),
+      ]);
     } catch (err) {
       console.warn('[PreloadScene] platform.startGame error:', err);
     }

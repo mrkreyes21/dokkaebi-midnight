@@ -9,7 +9,11 @@ export class BootScene extends Phaser.Scene {
   async create(): Promise<void> {
     const platform = getPlatformService();
     try {
-      await platform.initialize();
+      // Never block local boot if the platform adapter stalls
+      await Promise.race([
+        platform.initialize(),
+        new Promise<void>((resolve) => setTimeout(resolve, 2500)),
+      ]);
     } catch (err) {
       console.warn('[BootScene] Platform initialization error:', err);
     }
